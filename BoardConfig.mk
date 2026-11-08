@@ -134,17 +134,31 @@ BOARD_AVB_RECOVERY_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_RECOVERY_ROLLBACK_INDEX := 1
 BOARD_AVB_RECOVERY_ROLLBACK_INDEX_LOCATION := 1
 
-# 版本号与安全补丁级别
+# 版本号与安全补丁级别（**必须与当前 ROM 一致**）
 # 厂商的 libqtikeymint/libqtikeymaster4 会读 ro.build.version.release、
 # ro.build.version.security_patch 与 ro.vendor.build.security_patch，据此判断 metadata
 # key 是否需要升级。写小了会一直返回 -62 KEY_REQUIRES_UPGRADE，而升级必然失败（-8），
-# 表现为解密彻底不可用。这三个值必须随 ROM 更新同步修改。
+# 表现为解密彻底不可用。
+#
+# 当前值取自真机（HyperOS OS4.0.6.0.XMHCNXM，Android 17）：
+#   ro.build.version.release          = 17
+#   ro.build.version.sdk              = 37
+#   ro.build.version.security_patch   = 2026-10-01
+#   ro.vendor.build.security_patch    = 2026-02-01
+#   ro.vendor.build.version.release   = 12   （vendor 镜像仍按 12 构建）
+#
+# ROM 每次更新后都要重新核对，命令：
+#   adb shell getprop ro.build.version.release
+#   adb shell getprop ro.build.version.security_patch
+#   adb shell getprop ro.vendor.build.security_patch
+# 把下面的 PLATFORM_SECURITY_PATCH / BOOT_SECURITY_PATCH / PLATFORM_VERSION 改成新值再构建。
+#
 # boot 头部仍与原厂 boot 保持一致（12.0.0 / 2025-09），用 mkbootimg 参数显式覆盖。
-PLATFORM_VERSION := 16
+PLATFORM_VERSION := 17
 PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
-PLATFORM_SECURITY_PATCH := 2026-08-01
+PLATFORM_SECURITY_PATCH := 2026-10-01
 VENDOR_SECURITY_PATCH := 2026-02-01
-BOOT_SECURITY_PATCH := 2026-08-01
+BOOT_SECURITY_PATCH := 2026-10-01
 BOARD_MKBOOTIMG_ARGS += --os_version 12.0.0 --os_patch_level 2025-09
 
 # 解密：FBE v2（inlinecrypt_optimized + wrappedkey_v0）加 metadata 加密
