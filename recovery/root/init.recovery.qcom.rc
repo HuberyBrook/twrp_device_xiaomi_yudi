@@ -1,0 +1,150 @@
+# 小米平板 6 Max 14（yudi）recovery 的设备初始化
+#
+# 由 /init.rc 按 ro.hardware 自动导入：vendor_boot 的 bootconfig 设置了 androidboot.hardware=qcom。
+# 音频、ADSP、USB 和电池部分照搬原厂 recovery 的 init.recovery.qcom.rc；解密部分启动 vendor 的安全服务，
+# 服务定义来自原厂 vendor 的 rc 文件（recovery/root/vendor/etc/init/）。
+
+on early-init
+    # 原厂 recovery 同样在这里加载：ADSP 启动后，电池驱动才能拿到电量
+    insmod /vendor/lib/modules/q6_pdr_dlkm.ko
+    insmod /vendor/lib/modules/q6_notifier_dlkm.ko
+    insmod /vendor/lib/modules/snd_event_dlkm.ko
+    insmod /vendor/lib/modules/gpr_dlkm.ko
+    insmod /vendor/lib/modules/spf_core_dlkm.ko
+    insmod /vendor/lib/modules/adsp_loader_dlkm.ko
+
+service link-adsp /system/bin/sh /system/bin/link-adsp.sh
+    class core
+    user root
+    oneshot
+    seclabel u:r:recovery:s0
+
+on init
+    setprop sys.usb.configfs 1
+    # 第一次进入 device 模式时写一次 peripheral 的标记，见下面的 USB 规则
+    setprop sys.usb.mode_ready 0
+    # 触控固件放在 ramdisk 的 /lib/firmware：/vendor/firmware 之后会被 ADSP 固件覆盖
+    write /sys/module/firmware_class/parameters/path /lib/firmware
+
+on property:ro.boot.usbcontroller=*
+    setprop sys.usb.controller ${ro.boot.usbcontroller}
+    wait /sys/bus/platform/devices/${ro.boot.usb.dwc3_msm:-a600000.ssusb}/mode
+    # 先保持 idle：configfs 会在 gadget 配置好后再绑定 UDC。
+    write /sys/bus/platform/devices/${ro.boot.usb.dwc3_msm:-a600000.ssusb}/mode idle
+
+# 只在第一次进入 device 状态时写 peripheral。
+# OTG 自动挂载会先关闭 MTP（sys.usb.config mtp,adb -> adb），这个属性变化
+# 会再次触发 sys.usb.state=adb；如果无条件重写 peripheral，就会把已经切到
+# host 的 USB 模式踢回 device，导致 mount.ntfs 报 13/11。
+# mode_ready=1 后不再写，开机时的第一次枚举仍然正常。
+on property:sys.usb.state=adb && property:sys.usb.mode_ready=0
+    write /sys/bus/platform/devices/${ro.boot.usb.dwc3_msm:-a600000.ssusb}/mode peripheral
+    setprop sys.usb.mode_ready 1
+on property:sys.usb.state=fastboot && property:sys.usb.mode_ready=0
+    write /sys/bus/platform/devices/${ro.boot.usb.dwc3_msm:-a600000.ssusb}/mode peripheral
+    setprop sys.usb.mode_ready 1
+on property:sys.usb.state=sideload && property:sys.usb.mode_ready=0
+    write /sys/bus/platform/devices/${ro.boot.usb.dwc3_msm:-a600000.ssusb}/mode peripheral
+    setprop sys.usb.mode_ready 1
+
+on fs
+    # 主题覆盖文件（navbar / mount / images / keyboard / zh_CN / fonts / main）
+    # 已放在 ramdisk 的 /twres 下，构建时直接覆盖主题，不再开机复制。
+    wait /dev/block/platform/soc/${ro.boot.bootdevice}
+    symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
+    write /proc/sys/kernel/firmware_config/force_sysfs_fallback 1
+
+    # ADSP 固件在 modem 分区的 /image 下，不再放进 ramdisk（省约 24MB）。
+    # 用脚本把 /image/adsp.* 全部链到 /lib/firmware，段数变化时不用改 init。
+    # 震动效果文件在 vendor 分区的 /vendor/firmware，不能把整个 modem 镜像
+    # bind 到 /vendor/firmware，否则会盖住它们。
+    mkdir /vendor/firmware_mnt
+    mkdir /vendor/firmware
+    mount_all /vendor/etc/charger_fstab.qti --early
+    wait /vendor/firmware_mnt/image/adsp.mdt
+    start link-adsp
+    wait_for_prop sys.adsp.links.ready 1
+    wait /sys/kernel/boot_adsp/boot
+    write /sys/kernel/boot_adsp/boot 1
+    wait /sys/class/power_supply/battery
+
+    # 解密服务的库在 /vendor/lib64；Gatekeeper 的实现库在 /vendor/lib64/hw
+    export LD_LIBRARY_PATH /system/lib64:/vendor/lib64:/vendor/lib64/hw
+
+    # 原厂 health HIDL 服务。fastbootd 启动时先查 IHealth，查不到就会一直重试，
+    # USB 初始化根本不会进行。
+    start health-hal-2-1
+
+    # A/B 槽位控制：原厂 vendor 的 boot HAL（HIDL 1.2）
+    start vendor.boot-hal-1-2
+
+    # recovery 里 SPU 不可用，高通 Gatekeeper 默认会先尝试 SPU，
+    # verify_legacy 返回 -45；关掉 SPU 后走普通 TEE，图案、PIN 和文本密码才能验证。
+    setprop vendor.gatekeeper.disable_spu true
+
+    # Keymaster 版本：本设备为 4.1。配合 BoardConfig 的 TW_FORCE_KEYMASTER_VER，
+    # 让 TWRP 直接使用该值而不从 vendor manifest 探测（探测可能落到 4.0）。
+    setprop keymaster_ver 4.1
+
+    # 解密：qseecomd 需要的设备节点权限和工作目录
+    chmod 0660 /dev/qseecom
+    chown system drmrpc /dev/qseecom
+    chmod 0664 /dev/ion
+    chown system system /dev/ion
+    mkdir /mnt/vendor 0775 root system
+    mkdir /mnt/vendor/persist 0775 root system
+    mount ext4 /dev/block/bootdevice/by-name/persist /mnt/vendor/persist nosuid nodev noatime barrier=1
+    mkdir /data/vendor 0771 system system
+    mkdir /data/vendor/tzstorage 0770 system system
+    install_keyring
+    start vendor.qseecomd
+    start qseecom-service
+
+    # 震动：默认关闭。本树没有打包 vendor.qti.hardware.vibrator.service
+    # （YARP manifest 不含 vendor/qcom/opensource/vibrator，源码构建需另行补齐）。
+    # 若要启用，先在 BoardConfig 打开 TW_SUPPORT_INPUT_AIDL_HAPTICS 相关块。
+    #chmod 0666 /sys/class/qcom-haptics/lra_calibration
+    #chmod 0666 /sys/class/qcom-haptics/lra_impedance
+    #start vendor.qti.vibrator
+
+
+# qseecomd 注册完监听器后，启动依赖它的密钥服务
+on property:vendor.sys.listeners.registered=true
+    start vendor.keymaster-4-1
+    start gatekeeper-1-0
+    start vendor.keymint-qti
+
+# TWRP 的 MTP 走 configfs，但通用 recovery init 只创建了 adb/fastboot
+# 两个 function；这里补上 FunctionFS MTP。
+# 放在 on boot：此时 on fs 已经建好 /config/usb_gadget/g1 和 /dev/usb-ffs。
+on boot
+    # 先建 configfs function，再 mount FunctionFS；否则开机时 ep0 可能不会出现
+    mkdir /config/usb_gadget/g1/functions/ffs.mtp
+    mkdir /dev/usb-ffs/mtp 0770 system system
+    mount functionfs mtp /dev/usb-ffs/mtp rmode=0770,fmode=0660,uid=1000,gid=1000
+
+# MTP：adb 先起来，等 MTP FunctionFS 描述符写完再绑定 gadget
+on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1
+    start adbd
+
+on property:sys.usb.ffs.ready=1 && property:sys.usb.ffs.mtp.ready=1 && property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/idProduct 0x4EE2
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "mtp_adb"
+    symlink /config/usb_gadget/g1/functions/ffs.mtp /config/usb_gadget/g1/configs/b.1/f1
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f2
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+
+# 通用 init 的 none 规则只删 f1；MTP 用到 f2，这里补删
+on property:sys.usb.config=none && property:sys.usb.configfs=1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+
+# 从 MTP 直接切回 adb 时，先清掉 f1/f2，避免通用 adb 规则 symlink 失败
+on property:sys.usb.config=adb && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/UDC "none"
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+
+# USB Storage 已按设备树配置关闭（OF_ENABLE_USB_STORAGE=0），
+# mass_storage function 和对应 init 规则已删除。
+

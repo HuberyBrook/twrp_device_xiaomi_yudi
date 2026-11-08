@@ -1,0 +1,21 @@
+# yudi 额外系统属性
+# 只保留有明确依据的项；无依据的属性不要往这里加，避免与 ROM 的 vendor 属性冲突。
+
+# ADB 在 recovery 中免授权
+ro.adb.secure=0
+
+# 动态分区（真机 ro.boot.dynamic_partitions=true）
+ro.boot.dynamic_partitions=true
+
+# 动态分区可用空间：真机 super 分区 11811160064 字节
+ro.dynamic.full_size=11811160064
+
+# 充电时允许 suspend，避免 recovery 下耗电与发热
+ro.charger.enable_suspend=1
+
+# USB 走 configfs（真机 init.recovery.qcom.rc 中同样设置）
+vendor.usb.configfs=1
+
+# keymaster 版本：本设备为 Keymaster 4.1，与 BoardConfig 的
+# TW_FORCE_KEYMASTER_VER 配套。不从 vendor manifest 探测，避免识别成 4.0。
+keymaster_ver=4.1

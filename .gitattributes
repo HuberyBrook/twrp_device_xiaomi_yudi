@@ -1,0 +1,13 @@
+# 构建脚本一律 LF（Linux 端解析 fstab/rc/mk，CRLF 会导致解析失败）
+* text=auto eol=lf
+
+# 二进制资源：不要做换行转换
+*.so    binary
+*.bin   binary
+*.img   binary
+*.ko    binary
+*.ttf   binary
+*.elf   binary
+*.mbn   binary
+kernel  binary
+*.pem   -text
