@@ -79,13 +79,15 @@ jobs:
         create-symlink: true
 
     - name: Setup zram
+      # 尽力而为：ubuntu-latest 的 Azure 内核可能没有对应的 linux-modules-extra 包，
+      # 原版模板会在这里直接失败（apt 退出码 100）。zram 只是加速手段，缺了也能编。
       run: |
-        sudo apt install linux-modules-extra-$(uname -r) zram-tools -y
-        sudo modprobe zram
-        sudo sed -i 's/^#PERCENT=50/PERCENT=90/' /etc/default/zramswap
-        sudo sed -i 's/^#PRIORITY=100/PRIORITY=1000/' /etc/default/zramswap
-        sudo systemctl restart zramswap
-        zramctl
+        sudo apt install zram-tools -y || true
+        sudo modprobe zram || true
+        sudo sed -i 's/^#PERCENT=50/PERCENT=90/' /etc/default/zramswap || true
+        sudo sed -i 's/^#PRIORITY=100/PRIORITY=1000/' /etc/default/zramswap || true
+        sudo systemctl restart zramswap || true
+        zramctl || true
 
     - name: Setup environment
       run: |
