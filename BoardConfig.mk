@@ -205,10 +205,17 @@ TW_CUSTOM_CPU_TEMP_PATH := "/sys/class/thermal/thermal_zone27/temp"
 
 # 内核模块
 # 显示、电池、USB、加密相关驱动在 vendor_boot 的 modules.load.recovery 里，第一阶段
-# init 会自动加载。触控驱动不在其中，需要从 vendor_dlkm 单独加载：
-# dtbo 中触控控制器为 novatek,NVT-ts-spi，对应 nt36532_touch.ko，另需 xiaomi_touch.ko。
-TW_LOAD_VENDOR_MODULES := "xiaomi_touch.ko nt36532_touch.ko"
-TW_LOAD_VENDOR_MODULES_EXCLUDE_GKI := true
+# init 会自动加载。触控驱动（dtbo 中为 novatek,NVT-ts-spi，对应 nt36532_touch.ko，
+# 另需 xiaomi_touch.ko）不在其中，由 recovery/root/system/bin/load_touch.sh 在
+# init 阶段直接 insmod，优先取当前 ROM 的 /vendor/lib/modules，失败退回 ramdisk 副本。
+#
+# 不使用 TW_LOAD_VENDOR_MODULES：该路径会让构建系统在打包 ramdisk 时调用宿主
+# depmod 生成 modules.dep，而 YARP 的 twrp-16.0 分支没有把它编出来，构建会中断：
+#   FAILED: obj/PACKAGING/recovery_intermediates/ramdisk_files-timestamp
+#   /bin/bash: line 1: out/host/linux-x86/bin/depmod: No such file or directory
+# 运行时用 insmod 不需要 modules.dep，且能直接匹配当前内核。
+#TW_LOAD_VENDOR_MODULES := "xiaomi_touch.ko nt36532_touch.ko"
+#TW_LOAD_VENDOR_MODULES_EXCLUDE_GKI := true
 
 # 功能
 TW_INCLUDE_FASTBOOTD := true

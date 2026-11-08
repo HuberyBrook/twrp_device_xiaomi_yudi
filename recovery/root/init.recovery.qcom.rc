@@ -19,12 +19,23 @@ service link-adsp /system/bin/sh /system/bin/link-adsp.sh
     oneshot
     seclabel u:r:recovery:s0
 
+# 触摸模块：不动用 TWRP 的 TW_LOAD_VENDOR_MODULES（那条路径要求构建期 depmod），
+# 改为直接 insmod。优先当前 ROM 的 vendor_dlkm，失败才退回 ramdisk 副本。
+service load-touch /system/bin/sh /system/bin/load_touch.sh
+    class core
+    user root
+    oneshot
+    seclabel u:r:recovery:s0
+
 on init
     setprop sys.usb.configfs 1
     # 第一次进入 device 模式时写一次 peripheral 的标记，见下面的 USB 规则
     setprop sys.usb.mode_ready 0
     # 触控固件放在 ramdisk 的 /lib/firmware：/vendor/firmware 之后会被 ADSP 固件覆盖
     write /sys/module/firmware_class/parameters/path /lib/firmware
+    # on early-init 里已经从 /vendor/lib/modules 加载过 ADSP 相关模块，说明 /vendor
+    # 此时已挂载，触摸模块也可以在这里加载
+    start load-touch
 
 on property:ro.boot.usbcontroller=*
     setprop sys.usb.controller ${ro.boot.usbcontroller}

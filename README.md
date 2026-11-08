@@ -43,7 +43,7 @@ TARGET_OTA_ASSERT_DEVICE := yudi
 | 屏幕 | 1800x2880，`TW_ROTATION 270`，`TW_X_OFFSET 90`，`TW_W_OFFSET -180` | 真机 wm size + OF 四角实测 |
 | 背光 | `max_brightness = 4095` | 真机 sysfs |
 | CPU 温度 | `thermal_zone27`（cpuss-2） | 真机 thermal_zone 映射 |
-| 触摸模块 | `xiaomi_touch.ko`、`nt36532_touch.ko` | 真机 `/vendor/lib/modules` + dtbo 节点 |
+| 触摸模块 | `xiaomi_touch.ko`、`nt36532_touch.ko`，由 init 阶段 `load_touch.sh` 直接 insmod | 真机 `/vendor/lib/modules` + dtbo 节点 |
 | 加密 | FBE v2 + metadata 加密，fscrypt policy 2，`TW_USE_DMCTL` | 真机 fstab `fileencryption` / `metadata_encryption` |
 | 系统版本 | Android 17 / SDK 37 / `OS4.0.6.0.XMHCNXM`，vendor release 12 | 真机 `getprop` |
 
@@ -112,10 +112,11 @@ OrangeFox 树在相同板级配置下已验证上述大部分功能，可作对�
 
 1. **安全补丁级别必须与 ROM 一致**。详见上面[解密相关](#解密相关最容易被忽略的地方)一节。ROM 更新后需同步修改 `BoardConfig.mk` 中的三个值并重新构建。
 2. **bootloader 状态需要确认**。真机当前 `ro.boot.verifiedbootstate=green`、`ro.boot.flash.locked=1`，即**引导锁为锁定状态**。锁定状态下 `fastboot flash recovery` 会被拒绝，需先解锁（会清空数据）。若你是通过重打包签名的方式维持锁定，刷入本镜像前请先确认签名方式，否则可能无法启动。
-3. **震动默认关闭**。OF 树用源码编译的 AIDL vibrator HAL 驱动 `qcom-hv-haptics`，而 YARP 的 manifest 不含 `vendor/qcom/opensource/vibrator`。需要时先往 `local_manifest` 补该仓库，再打开 `BoardConfig.mk` 中被注释的块和 `init.recovery.qcom.rc` 里的三行。
-4. **不要用 HTTPS 克隆**（特定网络环境下 `github.com:443` 不可达时）：本机验证过 `22` 端口可用，请使用 SSH。
-5. **双清不解除锁屏**：普通双清保留 user 0 的锁屏凭据，需要清锁屏请用 Format Data。
-6. `prebuilt/kernel` 是**故意留空的 0 字节文件**，不要往里放内核——放进去反而会改变镜像结构。
+3. **不要启用 `TW_LOAD_VENDOR_MODULES`**。该变量会让构建系统在打包 ramdisk 时调用宿主 `depmod` 生成 `modules.dep`，而 YARP 的 `twrp-16.0` 分支没有把 `depmod` 编出来，会直接中断构建（`ramdisk_files-timestamp` 失败）。本树改用 `recovery/root/system/bin/load_touch.sh` 在 init 阶段 `insmod`，优先取当前 ROM 的 `/vendor/lib/modules`，不需要 `modules.dep`，也不会有内核版本不匹配的风险。
+4. **震动默认关闭**。OF 树用源码编译的 AIDL vibrator HAL 驱动 `qcom-hv-haptics`，而 YARP 的 manifest 不含 `vendor/qcom/opensource/vibrator`。需要时先往 `local_manifest` 补该仓库，再打开 `BoardConfig.mk` 中被注释的块和 `init.recovery.qcom.rc` 里的三行。
+5. **不要用 HTTPS 克隆**（特定网络环境下 `github.com:443` 不可达时）：本机验证过 `22` 端口可用，请使用 SSH。
+6. **双清不解除锁屏**：普通双清保留 user 0 的锁屏凭据，需要清锁屏请用 Format Data。
+7. `prebuilt/kernel` 是**故意留空的 0 字节文件**，不要往里放内核——放进去反而会改变镜像结构。
 
 ## 许可证
 
