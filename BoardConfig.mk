@@ -184,16 +184,19 @@ TW_FORCE_KEYMASTER_VER := true
 TW_USE_DMCTL := true
 
 # 界面
-# 面板原生 2880x1800，系统用 ORIENTATION_270 作为自然方向；TWRP 只有竖屏界面，
-# 同样旋转 270 度。四角实测无需 SWAP/FLIP 参数。
+# 面板原生 2880x1800（横屏），系统用 ORIENTATION_270 把它当成竖屏自然方向。
+# 这版 TWRP（3.7.1，gui2/LVGL）没有 portrait/landscape 主题图片资源了，界面按
+# 帧缓冲尺寸自适应布局：所以横屏与否取决于这里是否旋转。
+#   TW_ROTATION := 0   -> 帧缓冲 2880x1800，界面横屏
+#   TW_ROTATION := 270 -> 帧缓冲 1800x2880，界面竖屏（之前的配置）
+# 四角实测：触控驱动坐标系与竖屏画面一致，不需要 SWAP/FLIP。
 TW_THEME := portrait_hdpi
-TW_ROTATION := 270
-# 主题按 1080x1920 设计，屏幕 1800x2880：scale = 1.5，内容宽 1620px，左右各留 90px
-TW_W_OFFSET := -180
-TW_X_OFFSET := 90
+TW_ROTATION := 0
 TW_FRAMERATE := 60
 TW_NO_SCREEN_BLANK := true
 TW_STATUS_ICONS_ALIGN := center
+# 注意：原来的 TW_W_OFFSET -180 / TW_X_OFFSET 90 是给竖屏 1080x1920 主题做 1.5 倍
+# 缩放后居中用的，横屏下不再需要，已移除。若横屏下左右/上下有黑边再按需加回。
 
 # 背光：真机 /sys/class/backlight/panel0-backlight/max_brightness = 4095
 TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel0-backlight/brightness"
