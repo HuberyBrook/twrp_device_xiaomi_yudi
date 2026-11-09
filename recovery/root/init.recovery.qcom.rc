@@ -5,6 +5,11 @@
 # 服务定义来自原厂 vendor 的 rc 文件（recovery/root/vendor/etc/init/）。
 
 on early-init
+    # 触摸坐标系：面板原生 2880x1800（横屏），但触摸驱动按竖屏 1800x2880 上报，
+    # 而 TW_ROTATION := 0 只把界面按横屏渲染，不旋转输入。TWRP 的 minui 认这个
+    # 属性来单独旋转触摸坐标（libtwrpminui 里的 ro.twrp.touch.rotation）。
+    # 真机实测：0/90 时触摸到处乱跳，270 与画面完全对齐。
+    setprop ro.twrp.touch.rotation 270
     # 原厂 recovery 同样在这里加载：ADSP 启动后，电池驱动才能拿到电量
     insmod /vendor/lib/modules/q6_pdr_dlkm.ko
     insmod /vendor/lib/modules/q6_notifier_dlkm.ko
