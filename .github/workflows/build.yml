@@ -105,6 +105,14 @@ jobs:
         repo sync
         kill $TIP_PID && exit 0
 
+    - name: Patch CTS platform releases
+      # 本树把 PLATFORM_VERSION_LAST_STABLE 设为 17，让 ro.build.version.release=17
+      # （KeyMint 据此判定 metadata key 是否需要升级，写小了会 -62 导致解密不可用）。
+      # CTS 的版本清单来自 android16.0.0_r1，没有 17，构建期 cts.mk 会中止，这里补一行。
+      run: |
+        echo 17 >> cts/tests/tests/os/assets/platform_releases.txt
+        tail -3 cts/tests/tests/os/assets/platform_releases.txt
+
     - name: Setup device
       run: |
         git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} device/${{ github.event.inputs.DEVICE_PATH }}

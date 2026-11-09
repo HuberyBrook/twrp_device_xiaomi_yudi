@@ -155,13 +155,18 @@ BOARD_AVB_RECOVERY_ROLLBACK_INDEX_LOCATION := 1
 #
 # boot 头部仍与原厂 boot 保持一致（12.0.0 / 2025-09），用 mkbootimg 参数显式覆盖。
 PLATFORM_VERSION := 17
-# LAST_STABLE 必须留给 16：它表示"本分支最近一个稳定版本"，会被 CTS 用来查
-# cts/tests/tests/os/assets/platform_releases.txt，而本树基线是 android16.0.0_r1，
-# 该文件里没有 "17" 条目。把它设成 17 会直接让 ckati 中止：
-#   Could not find version "17" in CTS platform release file
-# PLATFORM_VERSION（= ro.build.version.release）与 LAST_STABLE 是两件事：
-# 前者要给 KeyMint 看（必须等于 ROM 的 17），后者只影响 CTS 与补丁级别推导。
-PLATFORM_VERSION_LAST_STABLE := 16
+# LAST_STABLE 必须是 17：AOSP 里 ro.build.version.release 取的是它
+# （build/make/core/sysprop.mk: ro.<part>.build.version.release=$(PLATFORM_VERSION_LAST_STABLE)），
+# 只有 ro.build.version.release_or_codename 和指纹才用 PLATFORM_VERSION。
+# KeyMint 判定 metadata key 是否需要升级时读 ro.build.version.release，
+# 所以这里必须是 17，否则 recovery 会自称 16，与系统的 17 不一致 → -62。
+#
+# 副作用：cts/tests/tests/os/assets/platform_releases.txt（来自 android16.0.0_r1）
+# 里只有 14/15/16/99.87.36，构建期 cts.mk 的 findstring 校验会因为找不到 17 而中止
+# （Only when the cts/ directory exists）。CI 工作流已在 repo sync 后补了一行 "17"，
+# 本地构建请照做：
+#   echo 17 >> cts/tests/tests/os/assets/platform_releases.txt
+PLATFORM_VERSION_LAST_STABLE := 17
 PLATFORM_SECURITY_PATCH := 2026-10-01
 VENDOR_SECURITY_PATCH := 2026-02-01
 BOOT_SECURITY_PATCH := 2026-10-01

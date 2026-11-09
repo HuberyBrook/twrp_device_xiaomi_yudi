@@ -67,7 +67,15 @@ adb shell getprop ro.build.version.security_patch
 adb shell getprop ro.vendor.build.security_patch
 ```
 
-已知差异：本树基于 `android16.0.0_r1`，因此 recovery 的 `ro.build.version.sdk` 为 36，而设备是 37。KeyMint 的升级判定用的是 `release` 与 `security_patch`（已对齐），若将来出现无法解释的 `-62`，SDK 差异是第一个要排查的点。
+`ro.build.version.release` 有个坑：AOSP 里它取自 **`PLATFORM_VERSION_LAST_STABLE`**，而不是 `PLATFORM_VERSION`（后者只进 `release_or_codename` 和指纹）。所以 `PLATFORM_VERSION_LAST_STABLE` 必须也是 17。代价是 CTS 的版本清单（来自 android16.0.0_r1，只有 14/15/16/99.87.36）校验会失败，构建前需补一行：
+
+```bash
+echo 17 >> cts/tests/tests/os/assets/platform_releases.txt
+```
+
+CI 工作流里已有对应的 "Patch CTS platform releases" 步骤，本地构建请手动执行。
+
+已知差异：本树基于 `android16.0.0_r1`，因此 recovery 的 `ro.build.version.sdk` 为 36，而设备是 37。KeyMint 的升级判定用 `release` 与 `security_patch`（均已对齐为 17 / 2026-10-01），若将来出现无法解释的 `-62`，SDK 差异是第一个要排查的点。
 
 
 ## 构建
