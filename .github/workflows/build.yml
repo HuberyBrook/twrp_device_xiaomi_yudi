@@ -113,6 +113,85 @@ jobs:
         echo 17 >> cts/tests/tests/os/assets/platform_releases.txt
         tail -3 cts/tests/tests/os/assets/platform_releases.txt
 
+    - name: Patch gui2 performance
+      # 两项针对 2880x1800 软件渲染的优化。全部尽力而为：任何一项没匹配上只告警，
+      # 不会让构建失败（最坏情况就是回到上游默认行为）。
+      run: |
+        python3 - <<'PY'
+        import re, sys, pathlib
+
+        ok_all = True
+
+        # 1) LVGL 刷新周期：不依赖 TW_FRAMERATE 是否被传到 liblvgl_twrp 的编译单元，
+        #    直接把 lv_conf.h 的周期钉成 8ms（125fps 上限）。面板为 120Hz，
+        #    原来的 16ms 等于把 120Hz 屏幕按 62fps 用。
+        p = pathlib.Path("bootable/recovery/gui2/lv_conf.h")
+        if p.exists():
+            s = p.read_text()
+            s2 = re.sub(
+                r"#if defined\(TW_FRAMERATE\) && TW_FRAMERATE > 0\s*\n"
+                r"#define LV_DEF_REFR_PERIOD \(1000 / TW_FRAMERATE\)\s*\n"
+                r"#else\s*\n"
+                r"#define LV_DEF_REFR_PERIOD \d+\s*\n"
+                r"#endif",
+                "/* [yudi] 钉死 8ms：面板 120Hz */\n#define LV_DEF_REFR_PERIOD 8",
+                s)
+            if s2 != s:
+                p.write_text(s2)
+                print("OK  lv_conf.h -> LV_DEF_REFR_PERIOD 8")
+            else:
+                ok_all = False
+                print("WARN lv_conf.h 未匹配，保持上游默认")
+        else:
+            ok_all = False
+            print("WARN 找不到 bootable/recovery/gui2/lv_conf.h")
+
+        # 2) 去掉非录屏状态下的整帧多余拷贝。
+        #    上游在 init 时无条件分配 20.7MB 的 recording_shadow_buffer，
+        #    flush_cb 里只判断 !empty() 就 memcpy，导致每帧白拷一次脏区域；
+        #    改成录屏时才懒分配，非录屏时 flush 直接跳过。
+        p = pathlib.Path("bootable/recovery/gui2/gui2_display.cpp")
+        if p.exists():
+            s = p.read_text()
+            a = "  recording_shadow_buffer.assign(static_cast<size_t>(width) * height * 4, 0);"
+            b = ("  // [yudi] 不预分配 20.7MB：改为 submit_recording_frame 里按需分配，\n"
+                 "  // 避免非录屏时每帧对脏区域做一次无用的 memcpy。")
+            c = ("  if (recording_shadow_buffer.empty() || recording_shadow_width <= 0 ||\n"
+                 "      recording_shadow_height <= 0)\n"
+                 "    return;")
+            d = ("  if (recording_shadow_buffer.empty()) {\n"
+                 "    const int w = gr_fb_width();\n"
+                 "    const int h = gr_fb_height();\n"
+                 "    if (w > 0 && h > 0) {\n"
+                 "      recording_shadow_width = w;\n"
+                 "      recording_shadow_height = h;\n"
+                 "      recording_shadow_buffer.assign(static_cast<size_t>(w) * h * 4, 0);\n"
+                 "    }\n"
+                 "  }\n" + c)
+            if a in s and c in s:
+                s = s.replace(a, b)
+                s = s.replace(c, d, 1)
+                p.write_text(s)
+                print("OK  gui2_display.cpp -> 录屏缓冲改为懒分配")
+            else:
+                ok_all = False
+                print("WARN gui2_display.cpp 未匹配，保持上游行为")
+        else:
+            ok_all = False
+            print("WARN 找不到 bootable/recovery/gui2/gui2_display.cpp")
+
+        # 打印结果供构建日志核对
+        print("--- lv_conf.h ---")
+        for line in pathlib.Path("bootable/recovery/gui2/lv_conf.h").read_text().splitlines()[:16]:
+            print(line)
+        print("--- gui2_display.cpp 关键行 ---")
+        for i, line in enumerate(pathlib.Path("bootable/recovery/gui2/gui2_display.cpp").read_text().splitlines(), 1):
+            if "recording_shadow_buffer" in line or "yudi" in line:
+                print(f"{i}: {line}")
+        sys.exit(0)
+        PY
+
+
     - name: Setup device
       run: |
         git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} device/${{ github.event.inputs.DEVICE_PATH }}

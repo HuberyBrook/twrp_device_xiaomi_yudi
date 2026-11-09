@@ -190,9 +190,19 @@ TW_USE_DMCTL := true
 #   TW_ROTATION := 0   -> 帧缓冲 2880x1800，界面横屏
 #   TW_ROTATION := 270 -> 帧缓冲 1800x2880，界面竖屏（之前的配置）
 # 四角实测：触控驱动坐标系与竖屏画面一致，不需要 SWAP/FLIP。
+# TW_THEME 在 3.7.1 的 gui2 下已无实际作用（只在 BoardConfigSoong.mk 里透传），
+# 保留原值仅为兼容旧脚本；横竖屏实际由上面的 TW_ROTATION 决定。
 TW_THEME := portrait_hdpi
 TW_ROTATION := 0
-TW_FRAMERATE := 60
+# 帧率：面板与 DRM mode 实测均为 120Hz
+#   dmesg: hactive=2880 vactive=1800 fps=120 clk_rate=830950000
+#   recovery.log: "Display Mode 0 resolution: 2880 x 1800 @ 120 FPS"
+# gui2 用 LVGL 的 LV_DEF_REFR_PERIOD = 1000 / TW_FRAMERATE 作为渲染周期，
+# 之前写 60 等于每 16ms 才允许刷一帧，把 120Hz 的屏幕强行按 60Hz 用，
+# 快速滑动和点击反馈都会明显发滞。改成 120 后周期 8ms（上限 125fps）。
+# 实际帧率仍受单线程软件渲染速度限制（LV_DRAW_SW_DRAW_UNIT_CNT=1，
+# 每帧全屏 2880x1800 XRGB8888 约 20.7MB），此处只解除人为节流。
+TW_FRAMERATE := 120
 TW_NO_SCREEN_BLANK := true
 TW_STATUS_ICONS_ALIGN := center
 # 注意：原来的 TW_W_OFFSET -180 / TW_X_OFFSET 90 是给竖屏 1080x1920 主题做 1.5 倍
