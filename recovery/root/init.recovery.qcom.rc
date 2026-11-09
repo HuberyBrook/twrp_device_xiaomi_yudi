@@ -33,6 +33,14 @@ on init
     setprop sys.usb.mode_ready 0
     # 触控固件放在 ramdisk 的 /lib/firmware：/vendor/firmware 之后会被 ADSP 固件覆盖
     write /sys/module/firmware_class/parameters/path /lib/firmware
+    # inotify 配额。MTP 会给"被访问过的每个目录"加 watch，而本机 /data/media/0
+    # 有 13.5 万个条目，内核默认 max_user_watches 只有 8192，配额耗尽后
+    # inotify_add_watch 返回 ENOSPC，日志被
+    #   E:[MTP] inotify_add_watch failed: No space left on device
+    # 持续刷屏（真机实测累计 1.7 万条，均来自这里，与磁盘空间无关），
+    # 且之后新目录不再有变更通知（电脑端看不到实时刷新）。
+    # 65536 约需 64MB 内核内存；真机验证：写 65536 后错误立即归零。
+    write /proc/sys/fs/inotify/max_user_watches 65536
     # on early-init 里已经从 /vendor/lib/modules 加载过 ADSP 相关模块，说明 /vendor
     # 此时已挂载，触摸模块也可以在这里加载
     start load-touch
